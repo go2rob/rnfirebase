@@ -1,4 +1,4 @@
-package com.invertase.rnfirebasestarter;
+package com.drylogics.rnfirebase;
 
 import android.app.Application;
 
