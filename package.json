@@ -1,10 +1,10 @@
 {
-  "name": "RNFirebaseStarter",
+  "name": "rnfirebase",
   "version": "0.1.0",
   "private": true,
   "devDependencies": {
     "babel-jest": "22.0.6",
-    "babel-preset-react-native-stage-0": "^1.0.1",
+    "babel-preset-react-native": "4.0.0",
     "fs-extra": "^4.0.2",
     "jest": "22.0.6",
     "react-test-renderer": "16.2.0",
@@ -22,8 +22,12 @@
   },
   "dependencies": {
     "fbjs": "^0.8.16",
+    "firebase-functions": "^1.1.0",
+    "moment": "^2.22.2",
     "react": "^16.3.1",
     "react-native": "^0.55.3",
-    "react-native-firebase": "^4.1.0"
+    "react-native-firebase": "^4.1.0",
+    "react-native-modal-datetime-picker": "^6.0.0",
+    "react-navigation": "^2.6.2"
   }
 }
