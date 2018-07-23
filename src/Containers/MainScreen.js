@@ -31,18 +31,34 @@ const helpers = {
 export default class MainScreen extends React.Component {
   state = {
     currentUser: firebase.auth().currentUser,
-    mainList: {},
+    Unlisted: {},
     lists: {},
+    sharedLists: {},
     isDateTimePickerVisible: false,
-    listName: "Default",
+    listName: "Unlisted",
     title: helpers.randomTitle(),
     amount: helpers.randomAmount(),
     date: moment(),
     addListModalVisible: false,
-    newListName: ""
+    newListName: "",
+    shareMenuVisible: false,
+    selectedUser: {},
+    selectedList: ""
   };
 
-  userRef = firebase.database().ref(`/${this.state.currentUser.uid}`);
+  otherUsers = () => {
+    const allUsers = [
+      { email: "user1@mail.com", uid: "Wm0dauw16dWZnZgDSyIITx6YOyi2" },
+      { email: "user2@mail.com", uid: "ZP6nqYjfbBWx0s1zqa1AkFkQvLt1" },
+      { email: "user3@mail.com", uid: "WoMrT7D0viPalWN9H7SKu44L93y1" }
+    ];
+
+    return _.values(
+      _.omitBy(allUsers, user => user.uid === this.state.currentUser.uid)
+    );
+  };
+
+  invitesRef = firebase.database().ref("invites");
 
   showDateTimePicker = () =>
     this.setState(prevState => ({
@@ -62,7 +78,7 @@ export default class MainScreen extends React.Component {
     const valid = _.every([title, amount], val => val !== "");
     if (valid) {
       const listPath =
-        listName === "mainList" ? "mainList" : `lists/${listName}`;
+        listName === "Unlisted" ? "Unlisted" : `lists/${listName}`;
       this.userRef
         .child(listPath)
         .child("items")
@@ -70,8 +86,6 @@ export default class MainScreen extends React.Component {
           if (error) {
             console.log(error);
             alert(error.message);
-          } else {
-            alert("Success");
           }
         });
     } else {
@@ -80,27 +94,37 @@ export default class MainScreen extends React.Component {
   };
 
   addListeners = () => {
-    this.userRef.child("mainList").on("value", this.updateMainList);
+    // listenHere = snap => {
+    //   console.log(snap.key);
+    // };
+
+    const uid = this.state.currentUser.uid;
+
+    this.userRef.child("Unlisted").on("value", this.updateUnlisted);
     this.userRef.child("lists").on("child_added", this.handleListAdded);
     this.userRef.child("lists").on("child_changed", this.handleListChanged);
+    this.invitesRef.child(`${uid}/`).on("value", this.fetchSharedLists);
   };
 
   removeListeners = () => {
-    this.userRef.child("mainList").off("value", this.updateMainList);
+    this.userRef.child("Unlisted").off("value", this.updateUnlisted);
     this.userRef.child("lists").off("child_added", this.handleListAdded);
     this.userRef.child("lists").off("child_changed", this.handleListChanged);
+    this.invitesRef.child(`${uid}/`).off("value", this.fetchSharedLists);
   };
 
-  updateMainList = snapshot => {
+  updateUnlisted = snapshot => {
     this.setState(prevState => ({
-      mainList: {
-        ...prevState.mainList,
+      Unlisted: {
+        ...prevState.Unlisted,
         ...snapshot.val()
       }
     }));
   };
 
   handleListAdded = (childSnapshot, prevChildKey) => {
+    console.log("here");
+
     this.userRef
       .child(`lists/${childSnapshot.ref.key}`)
       .child("name")
@@ -131,15 +155,66 @@ export default class MainScreen extends React.Component {
     }));
   };
 
+  fetchSharedLists = snapshot => {
+    const snap = {
+      cll0m8HQ8jgeiYa0kbvAz58BLqG3: { "List 3": { read: true } },
+      "5ybEuoGSj8d9Vb56Nfo5wuqohsH2": { "My List": { read: true } }
+    };
+    // "cll0m8HQ8jgeiYa0kbvAz58BLqG3": { "List 3": { read: true }, "List 2": {read: true} }
+    const listPaths = _.reduce(
+      snapshot.val(),
+      (obj, lists, uid) => {
+        const group = _.reduce(
+          lists,
+          (grp, permission, listName) => {
+            if (permission.read) {
+              const listPath = `/users/${uid}/lists/${listName}/items`;
+              grp[`${uid}-${listName}`] = firebase
+                .database()
+                .ref(listPath).path;
+            }
+            return grp;
+          },
+          {}
+        );
+        obj = { ...obj, ...group };
+        return obj;
+      },
+      {}
+    );
+    _.forEach(listPaths, (path, listKey) => {
+      firebase
+        .database()
+        .ref(path)
+        .once("value", snapshot => this.setSharedlist(listKey, snapshot));
+    });
+  };
+  setSharedlist = (listKey, snapshot) => {
+    this.setState(prevState => ({
+      sharedLists: {
+        ...prevState.sharedLists,
+        ...{
+          [listKey]: {
+            name: listKey,
+            items: snapshot.val()
+          }
+        }
+      }
+    }));
+  };
   componentDidMount() {
-    const { currentUser } = firebase.auth();
-    if (currentUser !== this.state.currentUser) {
-      this.setState({ currentUser });
-    }
+    this.userRef = firebase
+      .database()
+      .ref(`users/${this.state.currentUser.uid}`);
+
+    // const { currentUser } = firebase.auth();
+    // if (currentUser !== this.state.currentUser) {
+    //   this.setState({ currentUser });
+    // }
     this.addListeners();
   }
 
-  componentWillUnNount() {
+  componentWillUnMount() {
     this.removeListeners();
   }
 
@@ -158,6 +233,12 @@ export default class MainScreen extends React.Component {
     }
   };
 
+  handleUserSelect = (itemValue, itemIndex) => {
+    this.setState({
+      selectedUser: itemValue
+    });
+  };
+
   addNewList = () => {
     this.setState(prevState => ({
       listName: prevState.newListName,
@@ -165,20 +246,65 @@ export default class MainScreen extends React.Component {
     }));
   };
 
+  openShareMenu = list => {
+    this.setState(prevState => ({
+      shareMenuVisible: !prevState.shareMenuVisible,
+      selectedList: list
+    }));
+  };
+
+  shareList = () => {
+    const visitor = this.state.selectedUser;
+    const selectedList = this.state.selectedList;
+    const invitee = this.state.currentUser.uid;
+    const callback = error => {
+      if (error) {
+        alert(error.message);
+      } else {
+        const listRef = this.userRef.child(`/lists/${selectedList}`);
+        listRef.child(`sharedWith/${visitor}`).set("true");
+        alert("Invited");
+      }
+    };
+    this.invitesRef
+      .child(visitor)
+      .child(`${invitee}/${selectedList}/read`)
+      .set(true, callback);
+  };
+
   render() {
-    const { currentUser, newListName, mainList } = this.state;
+    const {
+      currentUser,
+      newListName,
+      Unlisted,
+      selectedUser,
+      sharedLists
+    } = this.state;
     const tempList =
       newListName !== "" ? { [newListName]: { name: newListName } } : {};
-    const allLists = _.assign(this.state.lists, { mainList });
-    // console.log(allLists);
-    // alert(this.state.amount);
+    // console.log(sharedLists);
+
+    const allLists = _.assign(this.state.lists, sharedLists, { Unlisted });
 
     return (
       <View style={styles.container}>
         <Text>Hi {currentUser && currentUser.email}!</Text>
         {_.map(allLists, (group, key) => (
           <View key={key} style={{ alignSelf: "flex-start" }}>
-            <Text style={{ fontWeight: "bold" }}>{group.name}</Text>
+            <View style={{ flexDirection: "row" }}>
+              <Text style={{ fontWeight: "bold", fontSize: 16 }}>
+                {group.name}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  this.openShareMenu(group.name);
+                }}
+              >
+                <Text style={{ color: "blue", fontSize: 12 }}>
+                  {group.name === "Unlisted" ? "" : "share"}
+                </Text>
+              </TouchableOpacity>
+            </View>
             {_.map(group.items, (exp, key) => (
               <Text key={key}>
                 {moment(exp.date).format("DD MMM")} | {exp.title} | {exp.amount}
@@ -221,11 +347,7 @@ export default class MainScreen extends React.Component {
             onValueChange={this.handleListSelect}
           >
             {_.map({ ...allLists, ...tempList }, (list, key) => (
-              <Picker.Item
-                key={key}
-                label={list.name === "mainList" ? "Default" : list.name || key}
-                value={key}
-              />
+              <Picker.Item key={key} label={key} value={key} />
             ))}
             <Picker.Item label="+" value="create list" />
           </Picker>
@@ -250,6 +372,39 @@ export default class MainScreen extends React.Component {
                 title={newListName === "" ? "Add" : `Add to ${newListName}`}
                 onPress={this.addNewList}
                 disabled={newListName === ""}
+              />
+            </View>
+          </Modal>
+          <Modal
+            animationType="slide"
+            visible={this.state.shareMenuVisible}
+            onRequestClose={() => {
+              this.setState(prevState => ({
+                shareMenuVisible: !prevState.shareMenuVisible
+              }));
+            }}
+          >
+            <View style={styles.addListNameModal}>
+              <Picker
+                selectedValue={this.state.selectedUser}
+                style={[styles.textInput]}
+                onValueChange={this.handleUserSelect}
+              >
+                <Picker.Item label="select" value={{}} />
+                {_.map(this.otherUsers(), (user, index) => (
+                  <Picker.Item
+                    key={index}
+                    label={user.email}
+                    value={user.uid}
+                  />
+                ))}
+              </Picker>
+              <Button
+                title="share"
+                onPress={() => {
+                  this.shareList();
+                }}
+                disabled={selectedUser === {}}
               />
             </View>
           </Modal>

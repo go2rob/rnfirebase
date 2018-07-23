@@ -11,14 +11,15 @@ export default class SignupScreen extends React.Component {
     const userRef = firebase
       .database()
       .ref("/")
+      .child("users")
       .child(user.uid);
 
     userRef.child("uid").set(user.uid);
-    userRef.child("mainList/name").set("mainList");
+    userRef.child("Unlisted/name").set("Unlisted");
     // .set({
     //   uid: user.uid,
-    //   mainList: {
-    //     name: "mainList"
+    //   Unlisted: {
+    //     name: "Unlisted"
     //   }
     // });
   };
